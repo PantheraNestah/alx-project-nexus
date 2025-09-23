@@ -1,6 +1,6 @@
 # PROJECT NEXUS - Movie Recommendation Backend
 
-## Core Design and Flowchart Processes
+## A. Core Design and Flowchart Processes
 
 ### 1. User Authentication and Management
 **Registration**
@@ -51,3 +51,70 @@ The core of the user-centric design, making the recommendations relevant to each
   "message": "Could not fetch trending movies at this time. Please try again later."
 } 
 ```
+
+## B. Schema Design
+### Database Models
+### 1. `users` Table
+
+| Column | Data Type | Constraints / Notes |
+| :--- | :--- | :--- |
+| `id` | `UUID` / `BIGINT` | Primary Key |
+| `name` | `VARCHAR(255)` | `NOT NULL` |
+| `email` | `VARCHAR(255)` | `NOT NULL`, `UNIQUE` |
+| `password_hash` | `VARCHAR(255)` | `NOT NULL`. **Never store plain text passwords.** |
+| `date_of_birth` | `DATE` | `NULLABLE`. Useful for age-gating content. |
+| `created_at` | `TIMESTAMP` | Default to `CURRENT_TIMESTAMP` |
+| `updated_at` | `TIMESTAMP` | Updates on any row change |
+
+
+### 2. `genres` Table
+TMDb provides a static list of genres with their own IDs.
+
+| Column | Data Type | Constraints / Notes |
+| :--- | :--- | :--- |
+| `id` | `INTEGER` | Primary Key. **The TMDb genre ID.** |
+| `name` | `VARCHAR(255)` | `NOT NULL`, `UNIQUE` |
+
+*   This table is populated once by calling the TMDb `/genre/movie/list` endpoint and storing the results.
+
+
+### 3. `movies` Table
+This is the local mirror of essential movie data from TMDb. It enforces that each movie from TMDb is stored only once.
+
+| Column | Data Type | Constraints / Notes |
+| :--- | :--- | :--- |
+| `id` | `UUID` / `BIGINT` | Primary Key (Internal to our system). |
+| `tmdb_id` | `INTEGER` | `NOT NULL`, `UNIQUE`. **Crucial for preventing duplicates.** |
+| `title` | `VARCHAR(255)` | `NOT NULL` |
+| `overview` | `TEXT` | |
+| `poster_path` | `VARCHAR(255)`| |
+| `release_date` | `DATE` | |
+| `popularity` | `FLOAT` | From TMDb. Great for sorting trending movies. |
+| `vote_average` | `FLOAT` | From TMDb. |
+| `created_at` | `TIMESTAMP` | Default to `CURRENT_TIMESTAMP` |
+| `updated_at` | `TIMESTAMP` | When we last synced this row with TMDb. |
+
+*   **A `UNIQUE` constraint on `tmdb_id` is critical for performance and data integrity.** This prevents the same movie from being inserted multiple times.
+*   The `popularity` and `vote_average` fields, will be very useful for building recommendation logic without calling the API again.
+*   The `updated_at` field can help build a mechanism to periodically refresh movie data from TMDb if needed.
+
+
+### 4. `movie_genres` (Junction Table)
+This table correctly models the many-to-many relationship between movies and genres.
+
+| Column | Data Type | Constraints / Notes |
+| :--- | :--- | :--- |
+| `movie_id` | `UUID` / `BIGINT` | Foreign Key to `movies.id`. Part of a Composite Primary Key. |
+| `genre_id` | `INTEGER` | Foreign Key to `genres.id`. Part of a Composite Primary Key. |
+
+
+### 5. `user_movie_interactions` Table
+A user can have many types of interactions with a movie: liking, bookmarking for later, marking as watched, etc.
+
+| Column | Data Type | Constraints / Notes |
+| :--- | :--- | :--- |
+| `user_id` | `UUID` / `BIGINT` | Foreign Key to `users.id`. |
+| `movie_id` | `UUID` / `BIGINT` | Foreign Key to `movies.id`. |
+| `interaction_type`| `VARCHAR(50)` | `NOT NULL`. E.g., 'liked', 'bookmarked', 'watched'. |
+| `created_at` | `TIMESTAMP` | Default to `CURRENT_TIMESTAMP`. |
+
