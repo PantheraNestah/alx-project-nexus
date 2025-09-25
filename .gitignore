@@ -1,3 +1,4 @@
 /nexus_venv
 .env
 docker-compose.yml
+**/**/__pycache__
