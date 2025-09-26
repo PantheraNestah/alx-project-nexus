@@ -190,6 +190,38 @@ class MovieDetailByTmdbIdView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+class MovieRecommendationsView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, movie_id): # This movie_id is our internal UUID
+        try:
+            base_movie = get_object_or_404(Movie, id=movie_id)
+            # Use base_movie.tmdb_id to call TMDb recommendations API
+            tmdb_recommendations_data = get_tmdb_movie_recommendations(base_movie.tmdb_id)
+
+            if not tmdb_recommendations_data:
+                return success_response([], message="No recommendations found for this movie.")
+
+            local_recommendations = []
+            for tmdb_rec in tmdb_recommendations_data:
+                movie_obj = save_movie_and_genres_to_db(tmdb_rec) # Upsert into local DB
+                if movie_obj:
+                    local_recommendations.append(movie_obj)
+
+            serializer = MovieSerializer(local_recommendations, many=True)
+            return success_response(serializer.data)
+
+        except Movie.DoesNotExist:
+            return error_response("Base movie for recommendations not found.", code="MOVIE_NOT_FOUND", status_code=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"Error fetching recommendations for movie {movie_id}: {e}")
+            return error_response(
+                "An unexpected error occurred while fetching recommendations.",
+                code="SERVER_ERROR",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
 class MovieSearchView(APIView):
     permission_classes = [AllowAny]
 
@@ -224,6 +256,39 @@ class MovieSearchView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+
+
+class UserRecommendationsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # --- Recommendation Logic Here ---
+        # 1. Fetch user's `UserMovieInteraction`s (liked movies, watched genres, etc.)
+        # 2. Use this data to query your local `Movie` database.
+        #    e.g., Get movies from genres liked by the user, exclude already interacted movies.
+        #    For a simple start: find genres from liked movies, then recommend other movies from those genres.
+
+        liked_movies = request.user.interactions.filter(interaction_type=UserMovieInteraction.InteractionType.LIKED)
+        liked_genres_ids = set()
+        for interaction in liked_movies:
+            for genre in interaction.movie.genres.all():
+                liked_genres_ids.add(genre.id)
+
+        if not liked_genres_ids:
+            # Fallback: if user has no liked movies, recommend trending
+            return success_response(TrendingMoviesView().get(request).data, message="No specific preferences yet, showing trending movies.")
+
+
+        # Get movies that belong to liked genres, excluding movies the user has already interacted with
+        interacted_movie_ids = request.user.interactions.values_list('movie__id', flat=True)
+        recommended_movies = Movie.objects.filter(
+            genres__id__in=list(liked_genres_ids)
+        ).exclude(
+            id__in=list(interacted_movie_ids)
+        ).distinct().order_by('-popularity')[:20] # Limit to top 20, sort by popularity
+
+        serializer = MovieSerializer(recommended_movies, many=True)
+        return success_response(serializer.data, message="Personalized recommendations generated.")
 
 # --- User Interactions ---
 
