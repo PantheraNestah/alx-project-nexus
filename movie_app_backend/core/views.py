@@ -11,6 +11,9 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from django.db import IntegrityError
 from django.shortcuts import get_object_or_404
 
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+
 from .models import User, Movie, Genre, UserMovieInteraction, Role
 from .serializers import (
     UserRegisterSerializer, UserProfileSerializer, MovieSerializer,
@@ -98,6 +101,15 @@ class UserProfileView(APIView):
 
 class TrendingMoviesView(APIView):
     permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_summary="Get Trending Movies",
+        operation_description="Fetches a list of movies that are currently trending. The results are cached for one hour to improve performance.",
+        responses={
+            200: MovieSerializer(many=True),
+503: openapi.Response(description="Service Unavailable: Could not fetch data from the external TMDb API.")
+        }
+    )
 
     def get(self, request):
         cache_key = 'trending_movies'
@@ -235,6 +247,24 @@ class MovieRecommendationsView(APIView):
 class MovieSearchView(APIView):
     permission_classes = [AllowAny]
 
+    @swagger_auto_schema(
+        operation_summary="Search for Movies",
+        operation_description="Searches for movies based on a user-provided query string.",
+        manual_parameters=[
+            openapi.Parameter(
+                'query', 
+                openapi.IN_QUERY, 
+                description="The search term to look for (e.g., 'Inception').", 
+                type=openapi.TYPE_STRING,
+                required=True
+            )
+        ],
+        responses={
+            200: MovieSerializer(many=True),
+400: openapi.Response(description="The 'query' parameter is missing.")
+        }
+    )
+
     def get(self, request):
         query = request.query_params.get('query', '').strip()
         if not query:
@@ -309,6 +339,16 @@ class UserInteractionsView(APIView):
         serializer = UserMovieInteractionSerializer(interactions, many=True)
         return success_response(serializer.data)
 
+    @swagger_auto_schema(
+        operation_summary="Create a User Interaction",
+        operation_description="Allows an authenticated user to record an interaction (e.g., 'LIKED', 'BOOKMARKED') with a movie. The movie must exist in our local database.",
+        request_body=UserMovieInteractionSerializer,
+        responses={
+            201: UserMovieInteractionSerializer,
+400: openapi.Response(description="Invalid data provided."),
+409: openapi.Response(description="This interaction already exists.")
+        }
+    )
     def post(self, request):
         # The frontend should send our internal movie UUID.
         # This is more secure and efficient.
@@ -369,6 +409,16 @@ class AdminUserDetailView(APIView):
 class AdminRoleAssignmentView(APIView):
     permission_classes = [IsAdminUser]
 
+    @swagger_auto_schema(
+        operation_summary="[Admin] Assign a Role to a User",
+        operation_description="Assigns a specific role (e.g., 'admin') to a user. This endpoint is restricted to administrators.",
+        request_body=AssignRoleSerializer,
+        responses={
+200: openapi.Response(description="Success, Role assigned successfully."),
+400: openapi.Response(description="Invalid data (e.g., missing user_id or role_name)."),
+404: openapi.Response(description="User not found.")
+        }
+    )
     def post(self, request):
         serializer = AssignRoleSerializer(data=request.data)
         if serializer.is_valid():
