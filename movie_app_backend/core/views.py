@@ -1,6 +1,5 @@
 from django.shortcuts import render
-
-# Create your views here.
+from django.core.cache import cache
 
 from rest_framework import status
 from rest_framework.response import Response
@@ -17,7 +16,7 @@ from .serializers import (
     UserRegisterSerializer, UserProfileSerializer, MovieSerializer,
     UserMovieInteractionSerializer, AdminUserSerializer, AssignRoleSerializer
 )
-from .permissions import IsAdminOrReadOnly
+from .permissions import IsAdminOrReadOnly, IsAdminUser
 from .utils import (
     fetch_movie_data_from_tmdb, save_movie_and_genres_to_db,
     get_tmdb_trending_movies, get_tmdb_movie_details, get_tmdb_movie_recommendations,
@@ -98,24 +97,27 @@ class UserProfileView(APIView):
 # --- Movie Data ---
 
 class TrendingMoviesView(APIView):
-    permission_classes = [AllowAny] # Can be restricted later if needed
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        cache_key = 'trending_movies'
+        cached_data = cache.get(cache_key)
+
+        if cached_data:
+            logger.info("Serving trending movies from cache.")
+            return success_response(cached_data)
+        
+        logger.info("Cache miss for trending movies. Fetching from TMDb.")
+
         try:
-            # --- Caching Logic Here ---
-            # 1. Check if trending movies are in cache (e.g., Redis)
-            #    If yes, return cached data.
-            # 2. If no (cache miss), call TMDb API via utils function
-            tmdb_movies_data = get_tmdb_trending_movies() # This function handles error internally
+            tmdb_movies_data = get_tmdb_trending_movies()
             if not tmdb_movies_data:
                 return error_response(
-                    "Could not fetch trending movies from TMDb.",
-                    code="TMDB_API_ERROR",
+                    "Could not fetch trending movies.", 
+                    code="TMDB_API_ERROR", 
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE
                 )
 
-            # 3. For each movie from TMDb, upsert into our local DB
-            #    This is where `save_movie_and_genres_to_db` from utils comes in.
             local_movies = []
             for tmdb_movie in tmdb_movies_data:
                 movie_obj = save_movie_and_genres_to_db(tmdb_movie)
@@ -123,15 +125,16 @@ class TrendingMoviesView(APIView):
                     local_movies.append(movie_obj)
 
             serializer = MovieSerializer(local_movies, many=True)
-            # 4. Cache the serialized data for future requests (with a TTL)
-            #    e.g., cache.set('trending_movies', serializer.data, timeout=3600)
+            
+            # Cache the result for 1 hour (3600 seconds)
+            cache.set(cache_key, serializer.data, timeout=3600)
+            
             return success_response(serializer.data)
-
         except Exception as e:
-            logger.error(f"Error fetching trending movies: {e}")
+            logger.error(f"Error fetching trending movies: {e}", exc_info=True)
             return error_response(
-                "An unexpected error occurred while fetching trending movies.",
-                code="SERVER_ERROR",
+                "An unexpected error occurred.", 
+                code="SERVER_ERROR", 
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -153,40 +156,47 @@ class MovieDetailView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-# Placeholder for specific TMDb ID details
+# --- MovieDetailByTmdbIdView with Caching ---
 class MovieDetailByTmdbIdView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, tmdb_id):
-        # 1. Check cache for tmdb_id (e.g., Redis)
-        # 2. Check local DB for tmdb_id
+        cache_key = f'movie_detail_{tmdb_id}'
+        cached_data = cache.get(cache_key)
+
+        if cached_data:
+            logger.info(f"Serving movie detail for TMDb ID {tmdb_id} from cache.")
+            return success_response(cached_data)
+        
+        # If not in cache, check our local DB first. This is faster than an API call.
         try:
             movie = Movie.objects.get(tmdb_id=tmdb_id)
             serializer = MovieSerializer(movie)
-            # If found in DB, cache it for later if not already
+            cache.set(cache_key, serializer.data, timeout=86400) # Cache for 24 hours
+            logger.info(f"Serving movie detail for TMDb ID {tmdb_id} from DB and caching it.")
             return success_response(serializer.data)
         except Movie.DoesNotExist:
-            pass # Not in local DB, proceed to TMDb
+            logger.info(f"Movie with TMDb ID {tmdb_id} not in DB. Fetching from TMDb.")
+            pass # Not in local DB, proceed to TMDb API call
 
-        # 3. If not in local DB, fetch from TMDb
         try:
             tmdb_movie_data = get_tmdb_movie_details(tmdb_id)
             if not tmdb_movie_data:
                 return error_response(
-                    f"Movie with TMDb ID {tmdb_id} not found or TMDb API error.",
-                    code="TMDB_MOVIE_NOT_FOUND",
+                    f"Movie with TMDb ID {tmdb_id} not found.", code="TMDB_MOVIE_NOT_FOUND", 
                     status_code=status.HTTP_404_NOT_FOUND
                 )
-            movie_obj = save_movie_and_genres_to_db(tmdb_movie_data) # Save to local DB
+            
+            movie_obj = save_movie_and_genres_to_db(tmdb_movie_data)
             serializer = MovieSerializer(movie_obj)
-            # Cache the result
+            
+            cache.set(cache_key, serializer.data, timeout=86400) # Cache for 24 hours
             return success_response(serializer.data)
-
         except Exception as e:
-            logger.error(f"Error fetching movie detail for TMDb ID {tmdb_id}: {e}")
+            logger.error(f"Error fetching movie detail for TMDb ID {tmdb_id}: {e}", exc_info=True)
             return error_response(
-                "An unexpected error occurred while fetching movie details.",
-                code="SERVER_ERROR",
+                "An unexpected error occurred.", 
+                code="SERVER_ERROR", 
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -257,7 +267,6 @@ class MovieSearchView(APIView):
             )
 
 
-
 class UserRecommendationsView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -301,41 +310,21 @@ class UserInteractionsView(APIView):
         return success_response(serializer.data)
 
     def post(self, request):
-        serializer = UserMovieInteractionSerializer(data=request.data)
+        # The frontend should send our internal movie UUID.
+        # This is more secure and efficient.
+        request_data = request.data.copy()
+        request_data['user'] = request.user.id # Add user to data for serializer
+        
+        serializer = UserMovieInteractionSerializer(data=request_data)
         if serializer.is_valid():
-            tmdb_movie_id = serializer.validated_data['movie'].tmdb_id # Get tmdb_id from validated movie object
-
-            # Ensure movie exists in our DB. If not, fetch from TMDb and save.
             try:
-                movie_obj = Movie.objects.get(tmdb_id=tmdb_movie_id)
-            except Movie.DoesNotExist:
-                # This should ideally be handled by frontend sending our internal movie ID
-                # or the serializer validating it. For now, assume movie exists or TMDB ID is sent.
-                # If frontend sends internal UUID, then we just need to get Movie object
-                movie_uuid = request.data.get('movie')
-                if not movie_uuid:
-                     return error_response("Movie ID is required for interaction.", code="INVALID_INPUT", status_code=status.HTTP_400_BAD_REQUEST)
-                try:
-                    movie_obj = Movie.objects.get(id=movie_uuid)
-                except Movie.DoesNotExist:
-                     return error_response("Movie not found in our database.", code="MOVIE_NOT_FOUND", status_code=status.HTTP_404_NOT_FOUND)
-
-
-            try:
-                serializer.save(user=request.user, movie=movie_obj) # Set user and movie from context
-                return success_response(serializer.data, message="Interaction saved successfully.", status_code=status.HTTP_201_CREATED)
+                serializer.save(user=request.user) # Pass user object directly to save method
+                return success_response(serializer.data, message="Interaction saved.", status_code=status.HTTP_201_CREATED)
             except IntegrityError:
-                return error_response(
-                    "You have already recorded this interaction for this movie.",
-                    code="DUPLICATE_INTERACTION",
-                    status_code=status.HTTP_409_CONFLICT
-                )
-        return error_response(
-            "Invalid interaction data.",
-            code="VALIDATION_ERROR",
-            status_code=status.HTTP_400_BAD_REQUEST,
-            details=serializer.errors
-        )
+                return error_response("This interaction already exists.", code="DUPLICATE_INTERACTION", status_code=status.HTTP_409_CONFLICT)
+        
+        return error_response("Invalid data provided.", code="VALIDATION_ERROR", details=serializer.errors)
+
 
 class UserInteractionDetailView(APIView):
     permission_classes = [IsAuthenticated]
@@ -345,7 +334,6 @@ class UserInteractionDetailView(APIView):
         interaction = get_object_or_404(UserMovieInteraction, id=interaction_id, user=request.user)
         interaction.delete()
         return success_response(None, message="Interaction deleted successfully.", status_code=status.HTTP_204_NO_CONTENT)
-
 
 
 # --- Admin Endpoints ---
