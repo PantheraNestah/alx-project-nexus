@@ -5,11 +5,15 @@ from .views import (
     MovieRecommendationsView, MovieSearchView,
     UserInteractionsView, UserInteractionDetailView, UserRecommendationsView,
     AdminUserListView, AdminUserDetailView, AdminRoleAssignmentView
+    , CustomTokenObtainPairView, 
 )
+from rest_framework_simplejwt.views import TokenRefreshView
 
 urlpatterns = [
     # Auth & User
-    path('register/', register_user, name='register'),
+    path('auth/register/', register_user, name='register'),
+    path('auth/token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('user/profile/', UserProfileView.as_view(), name='user_profile'),
     path('user/profile/update/', UserProfileView.as_view(), name='user_profile_update'), # PUT for update
 
