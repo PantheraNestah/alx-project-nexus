@@ -22,7 +22,7 @@ BASE_DIR = Path(__name__).resolve().parent.parent
 
 environ.Env.read_env(BASE_DIR/'.env')
 
-TMDB_API_KEY = env("TMDb_API_READACCESS_KEY")
+TMDB_API_KEY = env("TMDb_API_KEY")
 
 
 # Quick-start development settings - unsuitable for production
@@ -98,8 +98,11 @@ AUTH_USER_MODEL = 'core.User'
 
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'unique-snowflake', # A name for this cache instance
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': f'redis://{env('REDIS_HOST')}:6379/1',  # Format: redis://<hostname>:<port>/<db_number>
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        }
     }
 }
 
