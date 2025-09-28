@@ -21,6 +21,9 @@ env = environ.Env(
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__name__).resolve().parent.parent
 
+STATIC_URL = "/static/"
+STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
+
 environ.Env.read_env(BASE_DIR/'.env')
 
 TMDB_API_KEY = env("TMDb_API_KEY")
@@ -36,6 +39,7 @@ SECRET_KEY = 'django-insecure-5kaa2*io&n$6-o$*gt6(@nrz09iy-_m=n2(9)yp-)*75tce+c+
 DEBUG = True
 
 ALLOWED_HOSTS = [
+    "localhost",
     "Panthera254.pythonanywhere.com",
     "alx-project-nexus-5yz2.onrender.com"
 ]
@@ -58,6 +62,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -65,6 +70,9 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+# enable compression & caching
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
