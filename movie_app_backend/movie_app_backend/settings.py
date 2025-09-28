@@ -118,13 +118,20 @@ DATABASES = {
 
 AUTH_USER_MODEL = 'core.User'
 
-CACHES = {
+""" CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',
         'LOCATION': f'redis://{env('REDIS_HOST')}:6379/1',  # Format: redis://<hostname>:<port>/<db_number>
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
         }
+    }
+} """
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "unique-snowflake",
     }
 }
 
