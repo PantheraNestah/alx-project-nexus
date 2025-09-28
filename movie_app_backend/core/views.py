@@ -51,6 +51,29 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     # This view is provided by simplejwt, but you can customize it if needed
     pass
 
+@swagger_auto_schema(
+    method='post',
+    operation_summary="Register a New User",
+    operation_description="Registers a new user with username, email, and password.",
+    request_body=UserRegisterSerializer,
+    responses={
+        201: openapi.Response(
+            description="User registered successfully.",
+            examples={
+                "application/json": {
+                    "status": "success",
+                    "message": "User registered successfully. Please log in.",
+                    "data": {
+                        "username": "new_user",
+                        "email": "new_user@example.com"
+                    }
+                }
+            }
+        ),
+        400: openapi.Response(description="Registration failed due to invalid data."),
+        409: openapi.Response(description="User with this email or username already exists.")
+    }
+)
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register_user(request):
@@ -59,7 +82,7 @@ def register_user(request):
         try:
             user = serializer.save()
             # Optionally log in user immediately and return tokens
-            # For simplicity, we just return success for now
+            # For simplicity, we just return success
             return success_response(
                 {"username": user.username, "email": user.email},
                 message="User registered successfully. Please log in.",
@@ -81,10 +104,46 @@ def register_user(request):
 class UserProfileView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @swagger_auto_schema(
+        operation_summary="Retrieve User Profile",
+        operation_description="Fetch the authenticated user's profile details.",
+        responses={
+            200: UserProfileSerializer,
+            401: openapi.Response(description="Authentication credentials were not provided."),
+            403: openapi.Response(description="Not authorized to access this view."),
+        }
+    )
     def get(self, request):
         serializer = UserProfileSerializer(request.user)
         return success_response(serializer.data)
 
+    @swagger_auto_schema(
+        operation_summary="Update User Profile",
+        operation_description="Update the profile details of the authenticated user.",
+        request_body=UserProfileSerializer,
+        responses={
+            200: openapi.Response(
+                description="Profile updated successfully.",
+                examples={
+                    "application/json": {
+                        "status": "success",
+                        "message": "Profile updated successfully.",
+                        "data": {
+                            "id": "123",
+                            "username": "user",
+                            "email": "user@example.com",
+                            "date_of_birth": "1990-01-01",
+                            "roles": ["user"],
+                            "date_joined": "2020-01-01T00:00:00Z"
+                        }
+                    }
+                }
+            ),
+            400: openapi.Response(description="Profile update failed due to validation errors."),
+            401: openapi.Response(description="Authentication credentials were not provided."),
+            403: openapi.Response(description="Not authorized to update this profile."),
+        }
+    )
     def put(self, request):
         serializer = UserProfileSerializer(request.user, data=request.data, partial=True)
         if serializer.is_valid():
