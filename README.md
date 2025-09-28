@@ -1,6 +1,16 @@
 # PROJECT NEXUS - Movie Recommendation Backend
 
-## A. Core Design and Flowchart Processes
+## Table of Contents
+1. [Core Design and Processes](#a-core-design-and-flowchart-processes)
+   - User Authentication and Management
+   - TMDb API Integration
+   - User Preferences
+   - Robust Error Handling
+2. [Schema Design](#b-schema-design)
+3. [API Endpoint Design and Responsibilities](#c-api-endpoint-design-and-responsibilities)
+4. [Project Setup Instructions](#d-project-setup-instructions)
+
+## A. Core Design and Processes
 
 ### 1. User Authentication and Management
 **Registration**
@@ -146,6 +156,50 @@ A user can have many types of interactions with a movie: liking, bookmarking for
 
 
 ---
+
+## D. Project Setup Instructions
+
+Follow these steps to set up and run the project:
+
+### 1. Prerequisites
+Ensure you have the following installed:
+- Python 3.11+
+- pip
+- Virtualenv (`python3 -m venv venv`)
+- PostgreSQL (optional if using Docker)
+- Git
+
+### 2. Clone the Repository
+```bash
+git clone https://github.com/PantheraNestah/alx-project-nexus.git
+cd alx-project-nexus
+cd movie_app_backend
+```
+
+### 3. Setup Environment and Variables
+
+### 4. Install Dependencies
+```bash
+pip install -r requirements.txt
+```
+
+### 5. Database Setup
+
+### 6. Seed Movie Genres Data
+```bash
+python manage.py seed_genres
+```
+
+### 7. Run The Project
+Start the development server:
+```bash
+python manage.py runserver
+```
+Or with Docker:
+```bash
+docker-compose up --build
+```
+Visit: http://127.0.0.1:8000
 
 ## C. API Endpoint Design and Responsibilities
 
