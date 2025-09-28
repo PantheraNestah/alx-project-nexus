@@ -36,7 +36,8 @@ SECRET_KEY = 'django-insecure-5kaa2*io&n$6-o$*gt6(@nrz09iy-_m=n2(9)yp-)*75tce+c+
 DEBUG = True
 
 ALLOWED_HOSTS = [
-    "Panthera254.pythonanywhere.com"
+    "Panthera254.pythonanywhere.com",
+    "alx-project-nexus-5yz2.onrender.com"
 ]
 
 
